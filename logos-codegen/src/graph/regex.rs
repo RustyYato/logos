@@ -120,7 +120,7 @@ impl<Leaf: Disambiguate + Debug> Graph<Leaf> {
                     Some(mir) => self.parse_mir(mir, then, miss, reserved),
                 }
             }
-            Mir::Class(Class::Unicode(class)) if !is_ascii(&class) => {
+            Mir::Class(Class::Unicode(class)) if !class.is_all_ascii() => {
                 let mut ropes = class
                     .iter()
                     .flat_map(|range| Utf8Sequences::new(range.start(), range.end()))
@@ -168,15 +168,6 @@ impl<Leaf: Disambiguate + Debug> Graph<Leaf> {
             None => self.push(node),
         }
     }
-}
-
-fn is_ascii(class: &ClassUnicode) -> bool {
-    class.iter().all(|range| {
-        let start = range.start() as u32;
-        let end = range.end() as u32;
-
-        start < 128 && (end < 128 || end == 0x0010_FFFF)
-    })
 }
 
 fn is_one_ascii(class: &ClassUnicode) -> bool {

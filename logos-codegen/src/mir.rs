@@ -10,10 +10,10 @@ use crate::error::{Error, Result};
 
 lazy_static! {
     /// DOT regex that matches utf8 only.
-    static ref DOT_UTF8: Hir = Hir::dot(false);
+    static ref DOT_UTF8: Hir = Hir::any(false);
 
     /// DOT regex that matches any byte.
-    static ref DOT_BYTES: Hir = Hir::dot(true);
+    static ref DOT_BYTES: Hir = Hir::any(true);
 }
 
 /// Middle Intermediate Representation of the regex, built from
@@ -33,13 +33,19 @@ pub enum Mir {
 
 impl Mir {
     pub fn utf8(source: &str) -> Result<Mir> {
-        Mir::try_from(ParserBuilder::new().build().parse(source)?)
+        Mir::try_from(
+            ParserBuilder::new()
+                .dot_matches_new_line(true)
+                .build()
+                .parse(source)?,
+        )
     }
 
     pub fn utf8_ignore_case(source: &str) -> Result<Mir> {
         Mir::try_from(
             ParserBuilder::new()
                 .case_insensitive(true)
+                .dot_matches_new_line(true)
                 .build()
                 .parse(source)?,
         )
@@ -49,6 +55,7 @@ impl Mir {
         Mir::try_from(
             ParserBuilder::new()
                 .allow_invalid_utf8(true)
+                .dot_matches_new_line(true)
                 .unicode(false)
                 .build()
                 .parse(source)?,
@@ -59,6 +66,7 @@ impl Mir {
         Mir::try_from(
             ParserBuilder::new()
                 .allow_invalid_utf8(true)
+                .dot_matches_new_line(true)
                 .unicode(false)
                 .case_insensitive(true)
                 .build()
