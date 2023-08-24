@@ -94,7 +94,7 @@ impl<'a> Generator<'a> {
         let ident = self.generate_ident(id, ctx);
         let out = quote! {
             #[inline]
-            fn #ident<'s>(lex: &mut Lexer<'s>) {
+            fn #ident<'s>(lex: &Lexer<'s>) {
                 #body
             }
         };

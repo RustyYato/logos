@@ -2,8 +2,8 @@ use super::internal::LexerInternal;
 use super::Logos;
 use crate::source::{self, Source};
 
+use core::cell::Cell;
 use core::fmt::{self, Debug};
-use core::mem::ManuallyDrop;
 use core::ops::{Deref, DerefMut};
 
 /// Byte range in the source.
@@ -13,9 +13,9 @@ pub type Span = core::ops::Range<usize>;
 /// `Source` and produce tokens for enums implementing the `Logos` trait.
 pub struct Lexer<'source, Token: Logos<'source>> {
     source: &'source Token::Source,
-    token: ManuallyDrop<Option<Result<Token, Token::Error>>>,
-    token_start: usize,
-    token_end: usize,
+    token: Cell<Option<Result<Token, Token::Error>>>,
+    token_start: Cell<usize>,
+    token_end: Cell<usize>,
 
     /// Extras associated with the `Token`.
     pub extras: Token::Extras,
@@ -54,10 +54,10 @@ impl<'source, Token: Logos<'source>> Lexer<'source, Token> {
     pub fn with_extras(source: &'source Token::Source, extras: Token::Extras) -> Self {
         Lexer {
             source,
-            token: ManuallyDrop::new(None),
+            token: Cell::new(None),
             extras,
-            token_start: 0,
-            token_end: 0,
+            token_start: Cell::new(0),
+            token_end: Cell::new(0),
         }
     }
 
@@ -134,7 +134,7 @@ impl<'source, Token: Logos<'source>> Lexer<'source, Token> {
     /// Get the range for the current token in `Source`.
     #[inline]
     pub fn span(&self) -> Span {
-        self.token_start..self.token_end
+        self.token_start.get()..self.token_end.get()
     }
 
     /// Get a string slice of the current token.
@@ -148,7 +148,7 @@ impl<'source, Token: Logos<'source>> Lexer<'source, Token> {
     pub fn remainder(&self) -> <Token::Source as Source>::Slice<'source> {
         unsafe {
             self.source
-                .slice_unchecked(self.token_end..self.source.len())
+                .slice_unchecked(self.token_end.get()..self.source.len())
         }
     }
 
@@ -163,7 +163,7 @@ impl<'source, Token: Logos<'source>> Lexer<'source, Token> {
     {
         Lexer {
             source: self.source,
-            token: ManuallyDrop::new(None),
+            token: Cell::new(None),
             extras: self.extras.into(),
             token_start: self.token_start,
             token_end: self.token_end,
@@ -176,13 +176,23 @@ impl<'source, Token: Logos<'source>> Lexer<'source, Token> {
     ///
     /// Panics if adding `n` to current offset would place the `Lexer` beyond the last byte,
     /// or in the middle of an UTF-8 code point (does not apply when lexing raw `&[u8]`).
-    pub fn bump(&mut self, n: usize) {
-        self.token_end += n;
+    pub fn bump(&self, n: usize) {
+        let token_end = self.token_end.get() + n;
+        assert!(self.source.is_boundary(token_end), "Invalid Lexer bump");
+        self.token_end.set(token_end);
+    }
 
-        assert!(
-            self.source.is_boundary(self.token_end),
-            "Invalid Lexer bump",
-        )
+    /// Parse the next token
+    pub fn lex(&self) -> Option<Result<Token, Token::Error>> {
+        self.token_start.set(self.token_end.get());
+
+        Token::lex(self);
+
+        // This basically treats self.token as a temporary field.
+        // Since we always immediately return a newly set token here,
+        // we don't have to replace it with `None` or manually drop
+        // it later.
+        self.token.take()
     }
 }
 
@@ -192,10 +202,16 @@ where
     Token::Extras: Clone,
 {
     fn clone(&self) -> Self {
+        let token = self.token.take();
+        let token_clone = token.clone();
+        self.token.set(token);
+        debug_assert!(token_clone.is_none());
         Lexer {
             extras: self.extras.clone(),
-            token: self.token.clone(),
-            ..*self
+            token: Cell::new(token_clone),
+            source: self.source,
+            token_start: Cell::new(self.token_start.get()),
+            token_end: Cell::new(self.token_end.get()),
         }
     }
 }
@@ -208,15 +224,7 @@ where
 
     #[inline]
     fn next(&mut self) -> Option<Result<Token, Token::Error>> {
-        self.token_start = self.token_end;
-
-        Token::lex(self);
-
-        // This basically treats self.token as a temporary field.
-        // Since we always immediately return a newly set token here,
-        // we don't have to replace it with `None` or manually drop
-        // it later.
-        unsafe { ManuallyDrop::take(&mut self.token) }
+        self.lex()
     }
 }
 
@@ -289,7 +297,7 @@ where
     where
         Chunk: source::Chunk<'source>,
     {
-        self.source.read(self.token_end)
+        self.source.read(self.token_end.get())
     }
 
     /// Read a `Chunk` at a position offset by `n`.
@@ -298,7 +306,7 @@ where
     where
         Chunk: source::Chunk<'source>,
     {
-        self.source.read(self.token_end + n)
+        self.source.read(self.token_end.get() + n)
     }
 
     #[inline]
@@ -306,7 +314,7 @@ where
     where
         Chunk: source::Chunk<'source>,
     {
-        self.source.read_unchecked(self.token_end + n)
+        self.source.read_unchecked(self.token_end.get() + n)
     }
 
     /// Test a chunk at current position with a closure.
@@ -316,7 +324,7 @@ where
         T: source::Chunk<'source>,
         F: FnOnce(T) -> bool,
     {
-        match self.source.read::<T>(self.token_end) {
+        match self.source.read::<T>(self.token_end.get()) {
             Some(chunk) => test(chunk),
             None => false,
         }
@@ -329,7 +337,7 @@ where
         T: source::Chunk<'source>,
         F: FnOnce(T) -> bool,
     {
-        match self.source.read::<T>(self.token_end + n) {
+        match self.source.read::<T>(self.token_end.get() + n) {
             Some(chunk) => test(chunk),
             None => false,
         }
@@ -337,42 +345,44 @@ where
 
     /// Bump the position `Lexer` is reading from by `size`.
     #[inline]
-    fn bump_unchecked(&mut self, size: usize) {
-        debug_assert!(
-            self.token_end + size <= self.source.len(),
-            "Bumping out of bounds!"
-        );
+    fn bump_unchecked(&self, size: usize) {
+        let token_end = self.token_end.get() + size;
+        debug_assert!(token_end <= self.source.len(), "Bumping out of bounds!");
 
-        self.token_end += size;
+        self.token_end.set(token_end);
     }
 
     /// Reset `token_start` to `token_end`.
     #[inline]
-    fn trivia(&mut self) {
-        self.token_start = self.token_end;
+    fn trivia(&self) {
+        self.token_start.set(self.token_end.get());
     }
 
     /// Set the current token to appropriate `#[error]` variant.
     /// Guarantee that `token_end` is at char boundary for `&str`.
     #[inline]
-    fn error(&mut self) {
-        self.token_end = self.source.find_boundary(self.token_end);
-        self.token = ManuallyDrop::new(Some(Err(Token::Error::default())));
+    fn error(&self)
+    where
+        <Self::Token as crate::Logos<'source>>::Error: Default,
+    {
+        self.token_end
+            .set(self.source.find_boundary(self.token_end.get()));
+        self.token.set(Some(Err(Token::Error::default())));
     }
 
     #[inline]
-    fn end(&mut self) {
-        self.token = ManuallyDrop::new(None);
+    fn end(&self) {
+        self.token.set(None);
     }
 
     #[inline]
     fn set(
-        &mut self,
+        &self,
         token: Result<
             Self::Token,
             <<Self as LexerInternal<'source>>::Token as Logos<'source>>::Error,
         >,
     ) {
-        self.token = ManuallyDrop::new(Some(token));
+        self.token.set(Some(token));
     }
 }

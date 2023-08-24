@@ -32,7 +32,7 @@ impl<'a> Generator<'a> {
                     #bump
 
                     #[inline]
-                    fn callback<'s>(#arg: &mut Lexer<'s>) -> impl CallbackResult<'s, #ty, #this> {
+                    fn callback<'s>(#arg: &Lexer<'s>) -> impl CallbackResult<'s, #ty, #this> {
                         #body
                     }
 

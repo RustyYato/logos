@@ -26,19 +26,21 @@ pub trait LexerInternal<'source> {
     fn test_at<T: Chunk<'source>, F: FnOnce(T) -> bool>(&self, n: usize, test: F) -> bool;
 
     /// Bump the position by `size`.
-    fn bump_unchecked(&mut self, size: usize);
+    fn bump_unchecked(&self, size: usize);
 
     /// Reset `token_start` to `token_end`.
-    fn trivia(&mut self);
+    fn trivia(&self);
 
     /// Set the current token to appropriate `#[error]` variant.
     /// Guarantee that `token_end` is at char boundary for `&str`.
-    fn error(&mut self);
+    fn error(&self)
+    where
+        <Self::Token as crate::Logos<'source>>::Error: Default;
 
-    fn end(&mut self);
+    fn end(&self);
 
     fn set(
-        &mut self,
+        &self,
         token: Result<
             Self::Token,
             <<Self as LexerInternal<'source>>::Token as Logos<'source>>::Error,
@@ -47,14 +49,14 @@ pub trait LexerInternal<'source> {
 }
 
 pub trait CallbackResult<'s, P, T: Logos<'s>> {
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(P) -> T;
 }
 
 impl<'s, P, T: Logos<'s>> CallbackResult<'s, P, T> for P {
     #[inline]
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(P) -> T,
     {
@@ -62,9 +64,12 @@ impl<'s, P, T: Logos<'s>> CallbackResult<'s, P, T> for P {
     }
 }
 
-impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for bool {
+impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for bool
+where
+    T::Error: Default,
+{
     #[inline]
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(()) -> T,
     {
@@ -75,9 +80,12 @@ impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for bool {
     }
 }
 
-impl<'s, P, T: Logos<'s>> CallbackResult<'s, P, T> for Option<P> {
+impl<'s, P, T: Logos<'s>> CallbackResult<'s, P, T> for Option<P>
+where
+    T::Error: Default,
+{
     #[inline]
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(P) -> T,
     {
@@ -93,7 +101,7 @@ where
     E: Into<T::Error>,
 {
     #[inline]
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(P) -> T,
     {
@@ -106,7 +114,7 @@ where
 
 impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for Skip {
     #[inline]
-    fn construct<Constructor>(self, _: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, _: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(()) -> T,
     {
@@ -117,7 +125,7 @@ impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for Skip {
 
 impl<'s, P, T: Logos<'s>> CallbackResult<'s, P, T> for Filter<P> {
     #[inline]
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(P) -> T,
     {
@@ -135,7 +143,7 @@ impl<'s, P, E, T: Logos<'s>> CallbackResult<'s, P, T> for FilterResult<P, E>
 where
     E: Into<T::Error>,
 {
-    fn construct<Constructor>(self, c: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, c: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(P) -> T,
     {
@@ -152,7 +160,7 @@ where
 
 impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for T {
     #[inline]
-    fn construct<Constructor>(self, _: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, _: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(()) -> T,
     {
@@ -162,7 +170,7 @@ impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for T {
 
 impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for Result<T, T::Error> {
     #[inline]
-    fn construct<Constructor>(self, _: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, _: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(()) -> T,
     {
@@ -175,7 +183,7 @@ impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for Result<T, T::Error> {
 
 impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for Filter<T> {
     #[inline]
-    fn construct<Constructor>(self, _: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, _: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(()) -> T,
     {
@@ -190,7 +198,7 @@ impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for Filter<T> {
 }
 
 impl<'s, T: Logos<'s>> CallbackResult<'s, (), T> for FilterResult<T, T::Error> {
-    fn construct<Constructor>(self, _: Constructor, lex: &mut Lexer<'s, T>)
+    fn construct<Constructor>(self, _: Constructor, lex: &Lexer<'s, T>)
     where
         Constructor: Fn(()) -> T,
     {

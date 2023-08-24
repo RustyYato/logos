@@ -227,7 +227,7 @@ pub fn generate(input: TokenStream) -> TokenStream {
 
                 type Source = #source;
 
-                fn lex(lex: &mut ::logos::Lexer<'s, Self>) {
+                fn lex(lex: &::logos::Lexer<'s, Self>) {
                     #body
                 }
             }
@@ -291,11 +291,11 @@ pub fn generate(input: TokenStream) -> TokenStream {
 
         type Lexer<'s> = #logos_path::Lexer<'s, #this>;
 
-        fn _end<'s>(lex: &mut Lexer<'s>) {
+        fn _end<'s>(lex: &Lexer<'s>) {
             lex.end()
         }
 
-        fn _error<'s>(lex: &mut Lexer<'s>) {
+        fn _error<'s>(lex: &Lexer<'s>) {
             lex.bump_unchecked(1);
 
             lex.error();
