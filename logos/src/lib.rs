@@ -73,13 +73,13 @@
 //! use logos::{Logos, Lexer};
 //!
 //! // Note: callbacks can return `Option` or `Result`
-//! fn kilo(lex: &mut Lexer<Token>) -> Option<u64> {
+//! fn kilo(lex: &Lexer<Token>) -> Option<u64> {
 //!     let slice = lex.slice();
 //!     let n: u64 = slice[..slice.len() - 1].parse().ok()?; // skip 'k'
 //!     Some(n * 1_000)
 //! }
 //!
-//! fn mega(lex: &mut Lexer<Token>) -> Option<u64> {
+//! fn mega(lex: &Lexer<Token>) -> Option<u64> {
 //!     let slice = lex.slice();
 //!     let n: u64 = slice[..slice.len() - 1].parse().ok()?; // skip 'm'
 //!     Some(n * 1_000_000)
@@ -394,7 +394,7 @@ pub enum FilterResult<T, E> {
 /// );
 /// ```
 #[inline]
-pub fn skip<'source, Token: Logos<'source>>(_: &mut Lexer<'source, Token>) -> Skip {
+pub fn skip<'source, Token: Logos<'source>>(_: &Lexer<'source, Token>) -> Skip {
     Skip
 }
 
